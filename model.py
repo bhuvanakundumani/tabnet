@@ -61,7 +61,9 @@ class TabNet(Model):
             attentive_step_layers.append(BatchNormalization( momentum= self.batch_momentum, virtual_batch_size= self.v_b))
             self.attentive_layers.append(attentive_step_layers)
 
-        self.classification_layers =  Dense(units = self.num_classes, use_bias = False)
+        self.classification_layers =  Dense(units = self.num_classes,activation='softmax',  use_bias = False)
+    
+   # @tf.function
     def call(self, data):
         feature_data= self.input_feature_layers(data)
         feature_out= self.input_batch_norm(feature_data)
@@ -114,9 +116,12 @@ class TabNet(Model):
                 #feature selection
                 masked_features = tf.multiply(mask_values, feature_out)
                 #need to insert tensorgraph visualization for mask_values
+            else:
+                self.total_entropy = 0.
             
         #classification part
-        #self.add_loss(0.0001 * self.total_entropy)
+        self.add_loss(0.0001 * self.total_entropy)
         logits = self.classification_layers(self.output_aggregated)
-        predictions = tf.nn.softmax(logits)
-        return logits, predictions, self.total_entropy
+        #predictions = tf.nn.softmax(logits)
+        #return tf.argmax(logits,axis=1)
+        return logits
