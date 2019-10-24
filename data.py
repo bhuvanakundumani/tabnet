@@ -71,7 +71,7 @@ class Dataset():
             dataF = dataF.copy()
             #print(dataF.columns)
             labels = dataF.pop(self.target)
-            #labels = tf.one_hot(labels, 2)
+            labels = tf.one_hot(labels, 2)
             ds = tf.data.Dataset.from_tensor_slices((dict(dataF), labels))
             if shuffle:
                 ds = ds.shuffle(buffer_size = len(dataF)//10)

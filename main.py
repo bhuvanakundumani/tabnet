@@ -13,7 +13,7 @@ batch_size= 10
 sparsity_loss_weight= 0.0001
 decay_rate = 0.95
 decay_every = 500
-init_localearning_rate = 0.01
+init_localearning_rate = 0.02
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
@@ -31,19 +31,28 @@ inp_feature_columns = data_preprocess.make_feature_layer()
 
 MODEL = TabNet(feature_columns = inp_feature_columns, num_features= 16, feature_dim = 128, output_dim= 64, num_decision_steps= 6, relaxation_factor= 1.5, virtual_batch_size= 10, num_classes=2, batch_size= 100, batch_momentum= 0.7, is_training= True)
 
-#global_step = tf.compat.v1.train.get_or_create_global_step()
+global_step = tf.compat.v1.train.get_or_create_global_step()
 
+learning_rate = tf.compat.v1.train.exponential_decay(
+                init_localearning_rate,
+                global_step= global_step,
+                decay_steps= decay_every,
+                decay_rate= decay_rate
+)
+'''
 learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
                 init_localearning_rate,
                 decay_steps= decay_every,
                 decay_rate= decay_rate,staircase=False)
 
-optimizer= tf.keras.optimizers.Adam()#(learning_rate = learning_rate)
 '''
+optimizer= tf.keras.optimizers.Adam()#(learning_rate = learning_rate)
+#optimizer= tf.compat.v1.train.AdamOptimizer(learning_rate= learning_rate)
+
 def loss_function(actual_output, predicted_output):
     #predicted_output = tf.expand_dims(predicted_output,1)
     #predicted_output = tf.dtypes.cast(predicted_output,tf.int32)
-    #import ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
     softmax_orig_key_op = tf.keras.losses.sparse_categorical_crossentropy(actual_output,predicted_output,from_logits=False)
     #train_loss = softmax_orig_key_op + sparsity_loss_weight * entropy
     return softmax_orig_key_op
@@ -85,17 +94,18 @@ def training(dataset, epochs):
             print(f'loss : {loss_metric.result()}')
 
 training(train_data, 1)
+
+
 '''
 
 
-
-MODEL.compile(optimizer, loss= "categorical_crossentropy", metrics= ['accuracy'],dynamic=True)
+MODEL.compile(optimizer, loss= "categorical_crossentropy", metrics= ['accuracy'])
 #print(history.history)
 MODEL.fit(train_data, epochs= 5, validation_data= val_data)
 # Evaluating on val_data
 #results = MODEL.evaluate(val_data)
 #print(results)
-'''
+
 print("Predictions on the first three elements in the dataset")
 predictions = MODEL.predict(test_data[:3])
 print(f"predictions shape is {predictions.shape}")

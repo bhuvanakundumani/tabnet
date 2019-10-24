@@ -60,17 +60,22 @@ class TabNet(Model):
             attentive_step_layers.append(Dense(units = self.num_features,use_bias = False))
             attentive_step_layers.append(BatchNormalization( momentum= self.batch_momentum, virtual_batch_size= self.v_b))
             self.attentive_layers.append(attentive_step_layers)
+        self.sparsemax = tfa.layers.sparsemax.Sparsemax()
+        #self.classification_layers =  Dense(units = self.num_classes, activation='softmax',  use_bias = False)
+        self.classification_layers =  Dense(units = self.num_classes, use_bias = False)
 
-        self.classification_layers =  Dense(units = self.num_classes,activation='softmax',  use_bias = False)
-    
-   # @tf.function
+
+    #@tf.function
     def call(self, data):
+        #import ipdb; ipdb.set_trace()
         feature_data= self.input_feature_layers(data)
         feature_out= self.input_batch_norm(feature_data)
         masked_features = feature_out
         
         #to_do check re_use flag in dense
+        
         for step in range(self.num_decision_steps):
+            #print ("\n"*10, step)
             #tranformer1_block
             transformer1_output = self.transformer_layers[step][0](masked_features)
             #print(transformer1_output.shape)
@@ -92,36 +97,37 @@ class TabNet(Model):
             transformer4_output = self.transformer_layers[step][7](transformer4_output)
             transformer4_output = glu_layer(transformer4_output, self.feature_dim) + transformer3_output * np.sqrt(0.5)
 
-        
             if step > 0:
                 decision_out = tf.nn.relu(transformer4_output[:, :self.output_dim])
                 #decision_aggregation
                 self.output_aggregated += decision_out
                 #feature_importance attribute
-                self.scale_agg = tf.reduce_sum(decision_out, axis= 1, keepdims = True) / (self.num_decision_steps - 1)
+                self.scale_agg = tf.reduce_sum(decision_out, axis= 1, keepdims = True) /  tf.cast(self.num_decision_steps - 1, tf.float32)
+                
                 self.aggregated_mask_values += mask_values * self.scale_agg
 
             features_for_coef = (transformer4_output[:, self.output_dim:])
 
-            if step < self.num_decision_steps - 1:
+            if step < (self.num_decision_steps - 1):
+                print(f"steps finished{step}")
                 mask_values = self.attentive_layers[step][0](features_for_coef)
                 mask_values = self.attentive_layers[step][1](mask_values)
 
                 mask_values *= self.complementary_aggregated_mask_values
-                mask_values =  tfa.layers.sparsemax.Sparsemax()(mask_values)
+                mask_values =  self.sparsemax(mask_values)
                 self.complementary_aggregated_mask_values *= (self.relaxation_factor - mask_values)
 
                 self.total_entropy += tf.reduce_mean(tf.reduce_sum(-mask_values * tf.math.log(mask_values + self.epsilon),
-                                                                axis = 1)) / (self.num_decision_steps - 1)
-                #feature selection
+                                                                axis = 1)) / (self.num_decision_steps - 1)                #feature selection
                 masked_features = tf.multiply(mask_values, feature_out)
                 #need to insert tensorgraph visualization for mask_values
             else:
                 self.total_entropy = 0.
-            
+        print("Encoder finsihed")
         #classification part
         self.add_loss(0.0001 * self.total_entropy)
         logits = self.classification_layers(self.output_aggregated)
-        #predictions = tf.nn.softmax(logits)
+        predictions = tf.nn.softmax(logits)
+        #import ipdb; ipdb.set_trace()
         #return tf.argmax(logits,axis=1)
-        return logits
+        return predictions
